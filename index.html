@@ -448,6 +448,45 @@
 
     .loading-txt { color: var(--muted); font-style: italic; font-size: 10px; }
 
+    /* ── VESSEL LOG ── */
+    .vlog-tabs {
+      display: flex; gap: 0; overflow-x: auto;
+      border-bottom: 1px solid var(--border);
+      margin-top: 4px;
+    }
+    .vlog-tabs::-webkit-scrollbar { display: none; }
+    .vlog-tab {
+      padding: 5px 10px; font-size: 10px; color: var(--muted);
+      cursor: pointer; border-bottom: 2px solid transparent;
+      white-space: nowrap; user-select: none; flex-shrink: 0;
+    }
+    .vlog-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .vlog-tab:hover:not(.active) { color: var(--text); }
+    .vlog-tab-cnt {
+      background: rgba(88,166,255,.15); color: var(--accent);
+      border-radius: 8px; font-size: 9px; padding: 0 5px; margin-left: 3px;
+    }
+    .vlog-list { flex: 1; overflow-y: auto; }
+    .vlog-list::-webkit-scrollbar { width: 3px; }
+    .vlog-list::-webkit-scrollbar-thumb { background: var(--border); }
+    .vlog-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 5px 12px; border-bottom: 1px solid rgba(48,54,61,.4);
+    }
+    .vlog-row:hover { background: rgba(255,255,255,.02); }
+    .vlog-dir {
+      font-size: 10px; font-weight: 700; width: 16px; text-align: center; flex-shrink: 0;
+    }
+    .dir-in  { color: var(--green); }
+    .dir-out { color: var(--orange); }
+    .vlog-info { flex: 1; min-width: 0; }
+    .vlog-name { font-size: 11px; color: var(--text); font-weight: 600;
+                 white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .vlog-meta { font-size: 9px; color: var(--muted); margin-top: 1px; }
+    .vlog-time { font-size: 9px; color: var(--muted); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+    .vlog-empty { padding: 18px 12px; text-align: center; color: var(--muted);
+                  font-size: 11px; line-height: 1.6; }
+
     /* ── FOOTER ── */
     footer {
       height: 24px;
@@ -682,7 +721,7 @@
   </div>
 
   <!-- NEWS -->
-  <div class="news-pane">
+  <div class="news-pane" style="flex:0 0 30%">
     <div class="news-header">
       <div class="pane-title" style="margin-bottom:0">News Feed</div>
       <div style="font-size:9px;color:var(--muted);" id="news-ts">—</div>
@@ -695,6 +734,22 @@
     </div>
     <div class="news-list" id="news-list">
       <div class="nplaceholder">Loading news feeds…</div>
+    </div>
+  </div>
+
+  <!-- VESSEL LOG -->
+  <div class="news-pane" style="flex:0 0 22%;border-left:1px solid var(--border)">
+    <div class="news-header">
+      <div class="pane-title" style="margin-bottom:0">
+        Strait Crossings
+      </div>
+      <div style="font-size:9px;color:var(--accent);font-weight:600;" id="vlog-count">0 today</div>
+    </div>
+    <div class="vlog-tabs" id="vlog-tabs" data-active=""></div>
+    <div class="vlog-list" id="vlog-list">
+      <div class="vlog-empty">No crossings detected yet.<br>
+        <span style="font-size:9px">Detected live while page is open.<br>Requires AISStream key.</span>
+      </div>
     </div>
   </div>
 
@@ -788,7 +843,7 @@ const FENCE = [[26.4, 56.15], [26.4, 56.9]];
 const ARC_URL  = 'https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/Daily_Chokepoints_Data/FeatureServer/0/query';
 const COP_URL  = 'https://catalogue.dataspace.copernicus.eu/odata/v1/Products';
 const GDELT    = 'https://api.gdeltproject.org/api/v2/doc/doc';
-const RSS2JSON = 'https://api.rss2json.com/v1/api.json';
+const CORS_PROXY = 'https://corsproxy.io/?';
 
 const VESSEL_COLORS = {
   tanker:    '#ff6b6b',
@@ -800,11 +855,12 @@ const VESSEL_COLORS = {
 };
 
 const RSS_FEEDS = [
-  { url: 'https://splash247.com/feed/',                               label: 'Splash247',  tab: 'maritime' },
-  { url: 'https://feeds.feedburner.com/gcaptain',                     label: 'gCaptain',   tab: 'maritime' },
-  { url: 'https://www.aljazeera.com/xml/rss/all.xml',                 label: 'Al Jazeera', tab: 'regional' },
-  { url: 'https://www.xinhuanet.com/english/rss/worldrss.xml',        label: 'Xinhua',     tab: 'regional' },
-  { url: 'https://combinedmaritimeforces.com/feed/',                  label: 'CMF',        tab: 'official' },
+  { url: 'https://splash247.com/feed/',                        label: 'Splash247',  tab: 'maritime', alwaysShow: true  },
+  { url: 'https://feeds.feedburner.com/gcaptain',              label: 'gCaptain',   tab: 'maritime', alwaysShow: true  },
+  { url: 'https://www.marinelink.com/news/rss',                label: 'MarineLink', tab: 'maritime', alwaysShow: true  },
+  { url: 'https://www.aljazeera.com/xml/rss/all.xml',          label: 'Al Jazeera', tab: 'regional', alwaysShow: false },
+  { url: 'https://www.xinhuanet.com/english/rss/worldrss.xml', label: 'Xinhua',     tab: 'regional', alwaysShow: false },
+  { url: 'https://combinedmaritimeforces.com/feed/',           label: 'CMF',        tab: 'official', alwaysShow: true  },
 ];
 
 const KEYWORDS = ['hormuz','iran','persian gulf','tanker','strait','oil ship','sanction','naval','vessel attack','maritime security'];
@@ -815,10 +871,11 @@ const KEYWORDS = ['hormuz','iran','persian gulf','tanker','strait','oil ship','s
 const ST = {
   map: null, shipLayer: null, fenceLayer: null, modisLayer: null,
   ws: null,
-  ships: new Map(),   // mmsi → { marker, name, type, sog, dest }
+  ships: new Map(),   // mmsi → { marker, name, type, sog, dest, prevLat, prevLng }
   chart: null,
   articles: { all:[], maritime:[], regional:[], official:[] },
   activeTab: 'all',
+  crossings: loadCrossings(),  // persisted to localStorage by date
 };
 
 // ──────────────────────────────────────────────────────────────────
@@ -916,6 +973,11 @@ function connectAIS() {
   connect();
 }
 
+// Geofence crossing line latitude
+const FENCE_LAT  = 26.4;
+const FENCE_LNG_W = 56.15;
+const FENCE_LNG_E = 56.90;
+
 function onAISMsg(msg) {
   const mmsi = String(msg.MetaData?.MMSI || '');
   if (!mmsi) return;
@@ -929,8 +991,11 @@ function onAISMsg(msg) {
 
     if (ST.ships.has(mmsi)) {
       const s = ST.ships.get(mmsi);
+      // Check crossing before updating position
+      if (s.prevLat != null) checkCrossing(mmsi, s, lat, lng);
+      s.prevLat = s.lat; s.prevLng = s.lng;
+      s.lat = lat; s.lng = lng; s.sog = sog;
       s.marker.setLatLng([lat, lng]);
-      s.sog = sog;
     } else {
       const existing = ST.ships.get(mmsi) || {};
       const color = vesselColor(existing.typeCode);
@@ -948,7 +1013,7 @@ function onAISMsg(msg) {
           Destination: ${s.dest || '—'}`;
       });
 
-      ST.ships.set(mmsi, { marker, lat, lng, sog, ...existing });
+      ST.ships.set(mmsi, { marker, lat, lng, prevLat: null, prevLng: null, sog, ...existing });
     }
     document.getElementById('ship-count').textContent = ST.ships.size;
 
@@ -965,6 +1030,119 @@ function onAISMsg(msg) {
     }
     ST.ships.set(mmsi, entry);
   }
+}
+
+// ── CROSSING DETECTION ────────────────────────────────────────────
+function checkCrossing(mmsi, s, newLat, newLng) {
+  const prevLat = s.prevLat ?? s.lat;
+  // Did vessel cross FENCE_LAT within the longitude band?
+  const inBand = (lng) => lng >= FENCE_LNG_W && lng <= FENCE_LNG_E;
+  if (!inBand(newLng) && !inBand(s.lng)) return;
+
+  const crossed = (prevLat < FENCE_LAT && newLat >= FENCE_LAT) ||
+                  (prevLat > FENCE_LAT && newLat <= FENCE_LAT);
+  if (!crossed) return;
+
+  // Inbound = moving north into Gulf (lat increasing), outbound = south into Indian Ocean
+  const dir = newLat > prevLat ? 'Inbound' : 'Outbound';
+  recordCrossing(mmsi, s, dir);
+}
+
+function recordCrossing(mmsi, s, dir) {
+  const today = new Date().toISOString().slice(0, 10);
+  if (!ST.crossings[today]) ST.crossings[today] = [];
+
+  // Dedup — same vessel can't cross twice within 30 min
+  const recent = ST.crossings[today].find(c => c.mmsi === mmsi);
+  if (recent && Date.now() - recent.ts < 30 * 60 * 1000) return;
+
+  const entry = {
+    mmsi,
+    name:  s.name || 'Unknown',
+    type:  vesselTypeName(s.typeCode),
+    dest:  s.dest || '—',
+    dir,
+    ts:    Date.now(),
+    time:  new Date().toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit', hour12: false }),
+  };
+
+  ST.crossings[today].unshift(entry);
+  saveCrossings();
+  renderVesselLog();
+}
+
+// ── PERSISTENCE ───────────────────────────────────────────────────
+function loadCrossings() {
+  try {
+    const raw = localStorage.getItem('hz_crossings');
+    if (!raw) return {};
+    const data = JSON.parse(raw);
+    // Prune entries older than 7 days
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 7);
+    const cutStr = cutoff.toISOString().slice(0, 10);
+    Object.keys(data).forEach(k => { if (k < cutStr) delete data[k]; });
+    return data;
+  } catch (_) { return {}; }
+}
+
+function saveCrossings() {
+  try { localStorage.setItem('hz_crossings', JSON.stringify(ST.crossings)); } catch (_) {}
+}
+
+// ── VESSEL LOG RENDER ─────────────────────────────────────────────
+function renderVesselLog() {
+  const today    = new Date().toISOString().slice(0, 10);
+  const dateKeys = Object.keys(ST.crossings).sort().reverse();
+
+  const tabsEl = document.getElementById('vlog-tabs');
+  const listEl = document.getElementById('vlog-list');
+  const countEl = document.getElementById('vlog-count');
+
+  const activeDate = tabsEl.dataset.active || today;
+  const entries = ST.crossings[activeDate] || [];
+  const total   = dateKeys.reduce((n, k) => n + (ST.crossings[k]?.length || 0), 0);
+
+  // Update count badge
+  const todayCount = (ST.crossings[today] || []).length;
+  countEl.textContent = todayCount ? `${todayCount} today` : '0 today';
+
+  // Tabs (one per day with data)
+  tabsEl.innerHTML = dateKeys.map(d => {
+    const label = d === today ? 'Today' :
+                  d === new Date(Date.now() - 86400000).toISOString().slice(0,10) ? 'Yesterday' : d;
+    const cnt   = ST.crossings[d]?.length || 0;
+    const act   = d === activeDate ? 'active' : '';
+    return `<div class="vlog-tab ${act}" data-date="${d}">${label} <span class="vlog-tab-cnt">${cnt}</span></div>`;
+  }).join('');
+
+  // Bind tab clicks
+  tabsEl.querySelectorAll('.vlog-tab').forEach(el => {
+    el.addEventListener('click', () => {
+      tabsEl.dataset.active = el.dataset.date;
+      renderVesselLog();
+    });
+  });
+
+  if (!entries.length) {
+    listEl.innerHTML = `<div class="vlog-empty">${
+      total === 0
+        ? 'No crossings detected yet.<br><span style="font-size:9px">Crossings are detected live while the page is open. Requires AISStream key.</span>'
+        : 'No crossings recorded for this day.'
+    }</div>`;
+    return;
+  }
+
+  listEl.innerHTML = entries.map(e => `
+    <div class="vlog-row">
+      <div class="vlog-dir ${e.dir === 'Inbound' ? 'dir-in' : 'dir-out'}">${e.dir === 'Inbound' ? '▲' : '▼'}</div>
+      <div class="vlog-info">
+        <div class="vlog-name">${escHtml(e.name)}</div>
+        <div class="vlog-meta">${e.type} · dest: ${escHtml(e.dest)} · MMSI ${e.mmsi}</div>
+      </div>
+      <div class="vlog-time">${e.time}</div>
+    </div>
+  `).join('');
 }
 
 // Demo ships to populate map when no AIS key is provided
@@ -1265,20 +1443,28 @@ async function loadGDELT() {
 async function loadRSS() {
   await Promise.all(RSS_FEEDS.map(async feed => {
     try {
-      const url = `${RSS2JSON}?rss_url=${encodeURIComponent(feed.url)}&count=8`;
-      const r   = await fetch(url);
-      const d   = await r.json();
-      if (d.status !== 'ok') return;
+      const r    = await fetch(CORS_PROXY + encodeURIComponent(feed.url));
+      const text = await r.text();
+      const xml  = new DOMParser().parseFromString(text, 'text/xml');
+      const items = [...xml.querySelectorAll('item')];
 
-      const arts = d.items
-        .filter(it => isRelevant(it.title + ' ' + (it.description || '')))
+      const arts = items.slice(0, 12)
+        // For maritime-specific feeds, show all articles (already on topic).
+        // For regional/general feeds (Al Jazeera, Xinhua), filter by keyword.
+        .filter(it => {
+          if (feed.alwaysShow) return true;
+          const body = (getText(it, 'title') + ' ' + getText(it, 'description')).toLowerCase();
+          return KEYWORDS.some(k => body.includes(k));
+        })
         .map(it => ({
-          title:  it.title,
-          url:    it.link,
+          title:  getText(it, 'title'),
+          url:    getText(it, 'link') || getText(it, 'guid'),
           source: feed.label,
-          ts:     new Date(it.pubDate).getTime(),
+          ts:     new Date(getText(it, 'pubDate')).getTime(),
           tab:    feed.tab,
-        }));
+        }))
+        .filter(a => a.title && a.url);
+
       mergeArticles(arts);
     } catch (e) {
       console.error(`RSS ${feed.label}:`, e);
@@ -1286,9 +1472,9 @@ async function loadRSS() {
   }));
 }
 
-function isRelevant(text) {
-  const t = (text || '').toLowerCase();
-  return KEYWORDS.some(k => t.includes(k));
+function getText(el, tag) {
+  const node = el.querySelector(tag);
+  return node ? (node.textContent || '').trim() : '';
 }
 
 function mergeArticles(arts) {
@@ -1383,8 +1569,12 @@ window.addEventListener('DOMContentLoaded', () => {
   const hasKeys = CONFIG.AISSTREAM_KEY || CONFIG.ALPHA_VANTAGE_KEY;
   if (!hasKeys) document.getElementById('demo-banner').style.display = 'block';
 
+  // Set default active date for vessel log
+  document.getElementById('vlog-tabs').dataset.active = new Date().toISOString().slice(0, 10);
+
   initMap();
   connectAIS();
+  renderVesselLog();
   loadPortWatch();
   loadPrices();
   loadSatInfo();
