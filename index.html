@@ -271,8 +271,8 @@
     /* PRICES */
     .price-grid {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 6px;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 5px;
     }
     .price-card {
       background: var(--bg);
@@ -634,9 +634,19 @@
           <div class="price-chg" id="c-gas">—</div>
         </div>
         <div class="price-card">
+          <div class="price-name">Copper ($/lb)</div>
+          <div class="price-val" id="p-copper">—</div>
+          <div class="price-chg" id="c-copper">—</div>
+        </div>
+        <div class="price-card">
+          <div class="price-name">Aluminium ($/mt)</div>
+          <div class="price-val" id="p-aluminium">—</div>
+          <div class="price-chg" id="c-aluminium">—</div>
+        </div>
+        <div class="price-card">
           <div class="price-name">War Risk Premium</div>
-          <div class="price-val" id="p-risk" style="font-size:16px;color:var(--yellow)">~1.0%</div>
-          <div class="price-chg" style="color:var(--muted)">of hull value · S&amp;P Global</div>
+          <div class="price-val" id="p-risk" style="font-size:14px;color:var(--yellow)">~1.0%</div>
+          <div class="price-chg" style="color:var(--muted)">hull value · S&amp;P Global</div>
         </div>
       </div>
       <div id="price-notice" class="cfg-notice" style="display:none">
@@ -843,7 +853,13 @@ const FENCE = [[26.4, 56.15], [26.4, 56.9]];
 const ARC_URL  = 'https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/Daily_Chokepoints_Data/FeatureServer/0/query';
 const COP_URL  = 'https://catalogue.dataspace.copernicus.eu/odata/v1/Products';
 const GDELT    = 'https://api.gdeltproject.org/api/v2/doc/doc';
-const CORS_PROXY = 'https://corsproxy.io/?';
+// GDELT queries per tab (GDELT has CORS headers — no proxy needed)
+const GDELT_QUERIES = {
+  all:      '(hormuz OR "strait of hormuz" OR "persian gulf" OR "iran oil" OR "tanker attack") sourcelang:english',
+  maritime: '(hormuz OR "persian gulf" OR tanker OR "oil tanker" OR "shipping lane" OR "maritime security" OR "vessel attack") sourcelang:english',
+  regional: '(hormuz OR "strait of hormuz" OR iran OR "gulf war" OR "persian gulf") sourcelang:english sourcecountry:QA,AE,IR,SA,OM,KW,BH,IQ,PK,IN,CN',
+  official: '(hormuz OR "persian gulf" OR CENTCOM OR NAVCENT OR "combined maritime" OR "naval forces") sourcelang:english',
+};
 
 const VESSEL_COLORS = {
   tanker:    '#ff6b6b',
@@ -854,16 +870,6 @@ const VESSEL_COLORS = {
   other:     '#9e9e9e',
 };
 
-const RSS_FEEDS = [
-  { url: 'https://splash247.com/feed/',                        label: 'Splash247',  tab: 'maritime', alwaysShow: true  },
-  { url: 'https://feeds.feedburner.com/gcaptain',              label: 'gCaptain',   tab: 'maritime', alwaysShow: true  },
-  { url: 'https://www.marinelink.com/news/rss',                label: 'MarineLink', tab: 'maritime', alwaysShow: true  },
-  { url: 'https://www.aljazeera.com/xml/rss/all.xml',          label: 'Al Jazeera', tab: 'regional', alwaysShow: false },
-  { url: 'https://www.xinhuanet.com/english/rss/worldrss.xml', label: 'Xinhua',     tab: 'regional', alwaysShow: false },
-  { url: 'https://combinedmaritimeforces.com/feed/',           label: 'CMF',        tab: 'official', alwaysShow: true  },
-];
-
-const KEYWORDS = ['hormuz','iran','persian gulf','tanker','strait','oil ship','sanction','naval','vessel attack','maritime security'];
 
 // ──────────────────────────────────────────────────────────────────
 // STATE
@@ -1334,26 +1340,41 @@ function renderChart(recs) {
 // ──────────────────────────────────────────────────────────────────
 // OIL PRICES
 // ──────────────────────────────────────────────────────────────────
+// Indicative values shown when no API key provided
+const INDICATIVE = {
+  brent:     { price: 128.45, pct:  2.31 },
+  wti:       { price: 124.80, pct:  1.92 },
+  gas:       { price:   3.42, pct: -0.51 },
+  copper:    { price:   4.21, pct:  0.43 },
+  aluminium: { price:2380.00, pct: -0.18 },
+};
+
 async function loadPrices() {
   if (!CONFIG.ALPHA_VANTAGE_KEY) {
     document.getElementById('price-notice').style.display = 'block';
-    // Indicative values (not live)
-    setPrice('brent', 128.45, 2.31);
-    setPrice('wti',   124.80, 1.92);
-    setPrice('gas',     3.42, -0.51);
+    Object.entries(INDICATIVE).forEach(([id, v]) => setPrice(id, v.price, v.pct));
     return;
   }
 
-  try {
-    const [brent, wti, gas] = await Promise.all([
-      avFetch('BRENT'), avFetch('WTI'), avFetch('NATURAL_GAS'),
-    ]);
-    if (brent) setPrice('brent', brent.cur, brent.chg);
-    if (wti)   setPrice('wti',   wti.cur,   wti.chg);
-    if (gas)   setPrice('gas',   gas.cur,   gas.chg);
-  } catch (e) {
-    console.error('Prices:', e);
-  }
+  document.getElementById('price-notice').style.display = 'none';
+
+  // Alpha Vantage function names
+  const targets = [
+    { id: 'brent',     fn: 'BRENT'        },
+    { id: 'wti',       fn: 'WTI'          },
+    { id: 'gas',       fn: 'NATURAL_GAS'  },
+    { id: 'copper',    fn: 'COPPER'       },
+    { id: 'aluminium', fn: 'ALUMINUM'     },
+  ];
+
+  await Promise.all(targets.map(async ({ id, fn }) => {
+    try {
+      const data = await avFetch(fn);
+      if (data) setPrice(id, data.cur, data.chg);
+    } catch (e) {
+      console.error(`Price ${id}:`, e);
+    }
+  }));
 }
 
 async function avFetch(fn) {
@@ -1365,14 +1386,22 @@ async function avFetch(fn) {
   if (!series || series.length < 2) return null;
   const cur = parseFloat(series[0].value);
   const prv = parseFloat(series[1].value);
+  if (isNaN(cur) || isNaN(prv) || prv === 0) return null;
   return { cur, chg: ((cur - prv) / prv) * 100 };
 }
 
 function setPrice(id, price, pct) {
-  document.getElementById(`p-${id}`).textContent = `$${price.toFixed(2)}`;
-  const el = document.getElementById(`c-${id}`);
-  el.textContent = `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`;
-  el.className   = `price-chg ${pct >= 0 ? 'up' : 'dn'}`;
+  const pEl = document.getElementById(`p-${id}`);
+  const cEl = document.getElementById(`c-${id}`);
+  if (!pEl || !cEl) return;
+  pEl.textContent = isNaN(price) ? '—' : `$${price.toFixed(2)}`;
+  if (isNaN(pct) || pct == null) {
+    cEl.textContent = '—';
+    cEl.className = 'price-chg';
+  } else {
+    cEl.textContent = `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`;
+    cEl.className   = `price-chg ${pct >= 0 ? 'up' : 'dn'}`;
+  }
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -1421,60 +1450,31 @@ async function loadSatInfo() {
 // ──────────────────────────────────────────────────────────────────
 // NEWS — GDELT + RSS feeds
 // ──────────────────────────────────────────────────────────────────
-async function loadGDELT() {
+// Load all tabs from GDELT in parallel — no CORS proxy needed, GDELT has open headers
+async function loadNews() {
+  const tabs = Object.keys(GDELT_QUERIES);
+  await Promise.all(tabs.map(tab => loadGDELTTab(tab)));
+  document.getElementById('news-ts').textContent = `Refreshed ${fmt(new Date())}`;
+}
+
+async function loadGDELTTab(tab) {
   try {
-    const q   = encodeURIComponent('"strait of hormuz" OR "hormuz" OR "persian gulf shipping" OR "Iran oil" OR "tanker attack"');
-    const url = `${GDELT}?query=${q}&mode=ArtList&maxrecords=20&format=json&timespan=48h&sort=DateDesc`;
+    const q   = encodeURIComponent(GDELT_QUERIES[tab]);
+    const url = `${GDELT}?query=${q}&mode=ArtList&maxrecords=25&format=json&timespan=48h&sort=DateDesc`;
     const r   = await fetch(url);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d   = await r.json();
     const arts = (d.articles || []).map(a => ({
-      title: a.title, url: a.url,
-      source: a.domain.replace(/^www\./, ''),
-      ts: parseGDELTDate(a.seendate),
-      tab: 'all',
-    }));
+      title:  a.title,
+      url:    a.url,
+      source: (a.domain || '').replace(/^www\./, ''),
+      ts:     parseGDELTDate(a.seendate),
+      tab,
+    })).filter(a => a.title && a.url);
     mergeArticles(arts);
-    document.getElementById('news-ts').textContent = `Refreshed ${fmt(new Date())}`;
   } catch (e) {
-    console.error('GDELT:', e);
+    console.error(`GDELT [${tab}]:`, e);
   }
-}
-
-async function loadRSS() {
-  await Promise.all(RSS_FEEDS.map(async feed => {
-    try {
-      const r    = await fetch(CORS_PROXY + encodeURIComponent(feed.url));
-      const text = await r.text();
-      const xml  = new DOMParser().parseFromString(text, 'text/xml');
-      const items = [...xml.querySelectorAll('item')];
-
-      const arts = items.slice(0, 12)
-        // For maritime-specific feeds, show all articles (already on topic).
-        // For regional/general feeds (Al Jazeera, Xinhua), filter by keyword.
-        .filter(it => {
-          if (feed.alwaysShow) return true;
-          const body = (getText(it, 'title') + ' ' + getText(it, 'description')).toLowerCase();
-          return KEYWORDS.some(k => body.includes(k));
-        })
-        .map(it => ({
-          title:  getText(it, 'title'),
-          url:    getText(it, 'link') || getText(it, 'guid'),
-          source: feed.label,
-          ts:     new Date(getText(it, 'pubDate')).getTime(),
-          tab:    feed.tab,
-        }))
-        .filter(a => a.title && a.url);
-
-      mergeArticles(arts);
-    } catch (e) {
-      console.error(`RSS ${feed.label}:`, e);
-    }
-  }));
-}
-
-function getText(el, tag) {
-  const node = el.querySelector(tag);
-  return node ? (node.textContent || '').trim() : '';
 }
 
 function mergeArticles(arts) {
@@ -1578,13 +1578,11 @@ window.addEventListener('DOMContentLoaded', () => {
   loadPortWatch();
   loadPrices();
   loadSatInfo();
-  loadGDELT();
-  loadRSS();
+  loadNews();
   tick();
 
   // Refresh intervals
-  setInterval(loadGDELT,    15 * 60 * 1000);   // news: 15 min
-  setInterval(loadRSS,      30 * 60 * 1000);   // RSS:  30 min
+  setInterval(loadNews,     15 * 60 * 1000);   // news: 15 min
   setInterval(loadPrices,   15 * 60 * 1000);   // prices: 15 min
   setInterval(loadSatInfo,  60 * 60 * 1000);   // satellite: 1 hr
   setInterval(loadPortWatch, 6 * 60 * 60 * 1000); // transit data: 6 hr
