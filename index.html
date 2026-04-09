@@ -270,26 +270,30 @@
 
     /* PRICES */
     .price-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 5px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
     }
     .price-card {
+      display: flex;
+      align-items: center;
       background: var(--bg);
       border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 7px 9px;
+      border-radius: 5px;
+      padding: 5px 9px;
+      gap: 8px;
       min-width: 0;
     }
     .price-name {
-      font-size: 9px; color: var(--muted); margin-bottom: 3px;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      font-size: 10px; color: var(--muted);
+      flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .price-val {
-      font-size: 15px; font-weight: 700;
+      font-size: 13px; font-weight: 700;
       font-variant-numeric: tabular-nums;
+      flex-shrink: 0;
     }
-    .price-chg { font-size: 10px; margin-top: 2px; }
+    .price-chg { font-size: 10px; flex-shrink: 0; min-width: 48px; text-align: right; }
     .up { color: var(--green); }
     .dn { color: var(--red); }
 
@@ -395,9 +399,12 @@
     .news-list::-webkit-scrollbar-thumb { background: var(--border); }
 
     .nitem {
+      display: block;
       padding: 6px 12px;
       border-bottom: 1px solid rgba(48,54,61,.5);
       cursor: pointer;
+      text-decoration: none;
+      color: inherit;
     }
     .nitem:hover { background: rgba(255,255,255,.02); }
     .nsrc {
@@ -1511,11 +1518,11 @@ function renderNews() {
   }
 
   list.innerHTML = arts.slice(0, 25).map(a => `
-    <div class="nitem" onclick="window.open(${JSON.stringify(a.url)},'_blank','noopener')">
-      <div class="nsrc">${a.source}</div>
+    <a class="nitem" href="${escAttr(a.url)}" target="_blank" rel="noopener noreferrer">
+      <div class="nsrc">${escHtml(a.source)}</div>
       <div class="ntitle">${escHtml(a.title)}</div>
       <div class="ntime">${timeAgo(a.ts)}</div>
-    </div>
+    </a>
   `).join('');
 }
 
@@ -1555,6 +1562,10 @@ function fmt(d) {
 
 function escHtml(s) {
   return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function escAttr(s) {
+  return (s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
 function tick() {
