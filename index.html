@@ -1,0 +1,1414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HormuzWatch · Strait of Hormuz Traffic Monitor</title>
+  <meta name="description" content="Live shipping intelligence for the Strait of Hormuz — vessel transits, oil prices, satellite imagery, and regional news.">
+  <meta property="og:title" content="HormuzWatch · Strait of Hormuz Traffic Monitor">
+  <meta property="og:description" content="Live shipping intelligence — vessel transits, oil prices, Sentinel SAR, and regional news.">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0d1117;
+      --panel:   #161b22;
+      --panel2:  #1c2128;
+      --border:  #30363d;
+      --text:    #c9d1d9;
+      --muted:   #8b949e;
+      --accent:  #58a6ff;
+      --red:     #ff6b6b;
+      --green:   #3fb950;
+      --yellow:  #d29922;
+      --orange:  #f0883e;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 12px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── HEADER ── */
+    header {
+      height: 48px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      padding: 0 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      gap: 12px;
+    }
+    .hdr-left { display: flex; align-items: center; gap: 12px; }
+    .hdr-title {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      color: var(--text);
+    }
+    .hdr-sub { font-size: 10px; color: var(--muted); font-weight: 400; }
+    .hdr-sources { font-size: 10px; color: var(--muted); }
+    .live-badge {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 10px; color: var(--muted);
+    }
+    .live-dot {
+      width: 7px; height: 7px;
+      background: var(--green);
+      border-radius: 50%;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.25} }
+
+    /* ── SETTINGS BUTTON ── */
+    .settings-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 5px;
+      padding: 4px 10px;
+      font-size: 11px;
+      cursor: pointer;
+      display: flex; align-items: center; gap: 5px;
+      transition: color .15s, border-color .15s;
+    }
+    .settings-btn:hover { color: var(--text); border-color: var(--text); }
+
+    /* ── SETTINGS MODAL ── */
+    .modal-backdrop {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.65);
+      z-index: 9000;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      width: 440px;
+      max-width: 94vw;
+      padding: 22px 24px;
+    }
+    .modal-title {
+      font-size: 14px; font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .modal-sub {
+      font-size: 11px; color: var(--muted);
+      margin-bottom: 18px; line-height: 1.5;
+    }
+    .modal-sub a { color: var(--accent); text-decoration: none; }
+    .modal-sub a:hover { text-decoration: underline; }
+    .field-group { margin-bottom: 14px; }
+    .field-label {
+      font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .8px;
+      color: var(--muted); margin-bottom: 5px;
+      display: flex; justify-content: space-between;
+    }
+    .field-hint { font-weight: 400; text-transform: none; letter-spacing: 0; }
+    .field-input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 12px;
+      font-family: 'SF Mono', 'Cascadia Code', monospace;
+      padding: 8px 10px;
+      outline: none;
+      transition: border-color .15s;
+    }
+    .field-input:focus { border-color: var(--accent); }
+    .field-input::placeholder { color: var(--muted); opacity: .5; }
+    .modal-actions {
+      display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px;
+    }
+    .btn {
+      padding: 7px 16px; border-radius: 6px; font-size: 12px;
+      font-weight: 600; cursor: pointer; border: none;
+    }
+    .btn-secondary {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .btn-secondary:hover { color: var(--text); border-color: var(--text); }
+    .btn-primary {
+      background: var(--accent);
+      color: #0d1117;
+    }
+    .btn-primary:hover { opacity: .9; }
+    .key-status {
+      display: inline-block; font-size: 9px; font-weight: 600;
+      padding: 1px 6px; border-radius: 8px; margin-left: 6px;
+    }
+    .key-set   { background: rgba(63,185,80,.15); color: var(--green); }
+    .key-unset { background: rgba(139,148,158,.1); color: var(--muted); }
+
+    /* ── DEMO BANNER ── */
+    #demo-banner {
+      background: rgba(210,153,34,.12);
+      border-bottom: 1px solid rgba(210,153,34,.3);
+      padding: 5px 16px;
+      font-size: 11px;
+      color: var(--yellow);
+      display: none;
+      flex-shrink: 0;
+    }
+
+    /* ── MAIN (map + right panel) ── */
+    .main {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    /* MAP */
+    .map-wrap {
+      position: relative;
+      flex: 0 0 60%;
+      border-right: 1px solid var(--border);
+    }
+    #map { width: 100%; height: 100%; }
+
+    .map-badge {
+      position: absolute;
+      top: 10px; left: 10px;
+      z-index: 1000;
+      background: rgba(13,17,23,.88);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 5px 10px;
+      font-size: 11px;
+      color: var(--muted);
+      pointer-events: none;
+    }
+    .map-badge span { color: var(--text); font-weight: 600; }
+
+    /* RIGHT PANEL */
+    .right-panel {
+      flex: 0 0 40%;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      background: var(--border);
+    }
+    .right-panel::-webkit-scrollbar { width: 3px; }
+    .right-panel::-webkit-scrollbar-thumb { background: var(--border); }
+
+    .pane {
+      background: var(--panel);
+      padding: 11px 14px;
+    }
+
+    .pane-title {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+      margin-bottom: 9px;
+    }
+    .pane-title small {
+      font-size: 9px; font-weight: 400;
+      text-transform: none; letter-spacing: 0;
+      color: var(--muted); margin-left: 4px;
+    }
+
+    /* STATS */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      margin-bottom: 9px;
+    }
+    .stat-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 9px 8px;
+      text-align: center;
+    }
+    .stat-val {
+      font-size: 24px;
+      font-weight: 700;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+    }
+    .stat-lbl { font-size: 9px; color: var(--muted); margin-top: 3px; }
+    .stat-sub { font-size: 9px; color: var(--muted); margin-top: 2px; }
+
+    .vessel-tags {
+      display: flex; flex-wrap: wrap; gap: 5px;
+    }
+    .vtag {
+      font-size: 10px;
+      padding: 2px 7px;
+      border-radius: 10px;
+      display: flex; align-items: center; gap: 4px;
+    }
+    .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
+    /* PRICES */
+    .price-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px;
+    }
+    .price-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 10px;
+    }
+    .price-name { font-size: 9px; color: var(--muted); margin-bottom: 3px; }
+    .price-val {
+      font-size: 18px; font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .price-chg { font-size: 10px; margin-top: 2px; }
+    .up { color: var(--green); }
+    .dn { color: var(--red); }
+
+    /* SATELLITE */
+    .sat-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .sat-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 10px;
+    }
+    .sat-type { font-size: 9px; color: var(--accent); font-weight: 700; margin-bottom: 3px; }
+    .sat-date { font-size: 14px; font-weight: 700; }
+    .sat-detail { font-size: 9px; color: var(--muted); margin-top: 2px; }
+    .sat-link {
+      display: inline-block; margin-top: 5px;
+      font-size: 9px; color: var(--accent);
+      text-decoration: none;
+    }
+    .sat-link:hover { text-decoration: underline; }
+
+    .dark-alert {
+      display: flex; align-items: flex-start; gap: 8px;
+      background: rgba(210,153,34,.1);
+      border: 1px solid rgba(210,153,34,.25);
+      border-radius: 6px;
+      padding: 8px 10px;
+    }
+    .dark-alert-icon { font-size: 14px; line-height: 1; flex-shrink: 0; }
+    .dark-alert-title { font-size: 10px; font-weight: 700; color: var(--yellow); }
+    .dark-alert-body { font-size: 9px; color: var(--muted); margin-top: 2px; line-height: 1.4; }
+
+    /* LEGEND / CONTROLS */
+    .layer-row {
+      display: flex; align-items: center; gap: 7px;
+      font-size: 11px; color: var(--text);
+      cursor: pointer; padding: 2px 0;
+    }
+    .layer-row input { cursor: pointer; accent-color: var(--accent); }
+    .legend-row {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;
+    }
+    .leg { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--muted); }
+
+    /* ── BOTTOM ── */
+    .bottom {
+      display: flex;
+      height: 265px;
+      flex-shrink: 0;
+      border-top: 1px solid var(--border);
+      background: var(--border);
+      gap: 1px;
+    }
+
+    .chart-pane {
+      flex: 0 0 55%;
+      background: var(--panel);
+      padding: 10px 14px;
+      display: flex;
+      flex-direction: column;
+    }
+    .chart-pane canvas { flex: 1; }
+
+    .news-pane {
+      flex: 0 0 45%;
+      background: var(--panel);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .news-header {
+      padding: 8px 12px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .news-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      margin-top: 4px;
+    }
+    .ntab {
+      padding: 6px 10px;
+      font-size: 10px;
+      color: var(--muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      user-select: none;
+    }
+    .ntab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .ntab:hover:not(.active) { color: var(--text); }
+
+    .news-list {
+      flex: 1;
+      overflow-y: auto;
+    }
+    .news-list::-webkit-scrollbar { width: 3px; }
+    .news-list::-webkit-scrollbar-thumb { background: var(--border); }
+
+    .nitem {
+      padding: 6px 12px;
+      border-bottom: 1px solid rgba(48,54,61,.5);
+      cursor: pointer;
+    }
+    .nitem:hover { background: rgba(255,255,255,.02); }
+    .nsrc {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--accent);
+      margin-bottom: 2px;
+    }
+    .ntitle {
+      font-size: 11px;
+      color: var(--text);
+      line-height: 1.4;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .ntime { font-size: 9px; color: var(--muted); margin-top: 2px; }
+    .nplaceholder { padding: 20px; text-align: center; color: var(--muted); font-size: 11px; }
+
+    /* Leaflet overrides */
+    .leaflet-control-zoom a {
+      background: var(--panel) !important;
+      color: var(--text) !important;
+      border-color: var(--border) !important;
+    }
+    .leaflet-control-attribution {
+      background: rgba(13,17,23,.7) !important;
+      color: var(--muted) !important;
+      font-size: 9px !important;
+    }
+    .leaflet-popup-content-wrapper {
+      background: var(--panel2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 11px;
+    }
+    .leaflet-popup-tip { background: var(--panel2); }
+
+    /* Config notice */
+    .cfg-notice {
+      font-size: 9px;
+      color: var(--accent);
+      background: rgba(88,166,255,.08);
+      border: 1px solid rgba(88,166,255,.2);
+      border-radius: 4px;
+      padding: 5px 8px;
+      margin-top: 6px;
+    }
+
+    .loading-txt { color: var(--muted); font-style: italic; font-size: 10px; }
+
+    /* ── FOOTER ── */
+    footer {
+      height: 24px;
+      flex-shrink: 0;
+      background: var(--panel);
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      font-size: 10px;
+      color: var(--muted);
+    }
+    footer span { opacity: .7; }
+    footer b { color: var(--text); font-weight: 600; opacity: .9; }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════ HEADER -->
+<header>
+  <div class="hdr-left">
+    <div>
+      <div class="hdr-title">HORMUZWATCH</div>
+      <div class="hdr-sub">26.5°N 56.5°E · Strait of Hormuz · Real-time shipping intelligence</div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <div class="hdr-sources">IMF PortWatch · AISStream · Sentinel-1/2 · GDELT · Alpha Vantage</div>
+    <div class="live-badge">
+      <div class="live-dot"></div>
+      <span id="ts">Initialising...</span>
+    </div>
+    <button class="settings-btn" onclick="openSettings()">⚙ API Keys</button>
+  </div>
+</header>
+
+<!-- ═══════════════════════════════════════════════════════ SETTINGS MODAL -->
+<div class="modal-backdrop" id="modal-backdrop" onclick="closeSettingsOnBackdrop(event)">
+  <div class="modal">
+    <div class="modal-title">API Key Configuration</div>
+    <div class="modal-sub">
+      Keys are saved in your browser (localStorage) — never sent anywhere except the respective APIs.
+    </div>
+
+    <div class="field-group">
+      <div class="field-label">
+        AISStream
+        <span class="key-status key-unset" id="badge-ais">not set</span>
+        <span class="field-hint">Live ship positions via WebSocket</span>
+      </div>
+      <input class="field-input" id="inp-ais" type="password"
+             placeholder="e.g. a1b2c3d4e5f6…"
+             autocomplete="off" spellcheck="false">
+      <div style="font-size:9px;color:var(--muted);margin-top:4px;">
+        Free — sign in with GitHub at <a href="https://aisstream.io/authenticate" target="_blank" rel="noopener" style="color:var(--accent)">aisstream.io</a>
+      </div>
+    </div>
+
+    <div class="field-group">
+      <div class="field-label">
+        Alpha Vantage
+        <span class="key-status key-unset" id="badge-av">not set</span>
+        <span class="field-hint">Live Brent · WTI · Gas prices</span>
+      </div>
+      <input class="field-input" id="inp-av" type="password"
+             placeholder="e.g. ABCDEF123456…"
+             autocomplete="off" spellcheck="false">
+      <div style="font-size:9px;color:var(--muted);margin-top:4px;">
+        Free — register at <a href="https://www.alphavantage.co/support/#api-key" target="_blank" rel="noopener" style="color:var(--accent)">alphavantage.co</a> (25 calls/day on free tier)
+      </div>
+    </div>
+
+    <div style="font-size:10px;color:var(--muted);background:rgba(88,166,255,.07);border:1px solid rgba(88,166,255,.15);border-radius:6px;padding:8px 10px;margin-top:4px;line-height:1.5;">
+      <b style="color:var(--accent)">No keys needed</b> for: IMF PortWatch transit data · Copernicus satellite catalog · GDELT + RSS news feeds — these load automatically.
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeSettings()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSettings()">Save &amp; Apply</button>
+    </div>
+  </div>
+</div>
+
+<div id="demo-banner">
+  ⚠ Demo mode — live ship positions and real-time prices require API keys. Edit CONFIG in source to enable. Data: IMF PortWatch, GDELT, and satellite catalog are live and free.
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ MAIN -->
+<div class="main">
+
+  <!-- MAP -->
+  <div class="map-wrap">
+    <div id="map"></div>
+    <div class="map-badge">
+      <span id="ship-count">0</span> live AIS vessels
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="right-panel">
+
+    <!-- TRANSIT STATS -->
+    <div class="pane">
+      <div class="pane-title">Today's Transits <small>IMF PortWatch · ~4-day lag</small></div>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-val" id="s-total">—</div>
+          <div class="stat-lbl">Vessels</div>
+          <div class="stat-sub" id="s-date" style="font-size:9px">Loading…</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-val" id="s-tanker" style="color:var(--red)">—</div>
+          <div class="stat-lbl">Tankers</div>
+          <div class="stat-sub" id="s-cap">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-val" id="s-chg">—</div>
+          <div class="stat-lbl">vs Pre-crisis</div>
+          <div class="stat-sub">Avg was ~95/day</div>
+        </div>
+      </div>
+      <div class="vessel-tags" id="vessel-tags">
+        <span class="loading-txt">Loading vessel breakdown…</span>
+      </div>
+    </div>
+
+    <!-- PRICES -->
+    <div class="pane">
+      <div class="pane-title">Commodity Prices</div>
+      <div class="price-grid">
+        <div class="price-card">
+          <div class="price-name">Brent Crude ($/bbl)</div>
+          <div class="price-val" id="p-brent">—</div>
+          <div class="price-chg" id="c-brent">—</div>
+        </div>
+        <div class="price-card">
+          <div class="price-name">WTI Crude ($/bbl)</div>
+          <div class="price-val" id="p-wti">—</div>
+          <div class="price-chg" id="c-wti">—</div>
+        </div>
+        <div class="price-card">
+          <div class="price-name">Natural Gas ($/MMBtu)</div>
+          <div class="price-val" id="p-gas">—</div>
+          <div class="price-chg" id="c-gas">—</div>
+        </div>
+        <div class="price-card">
+          <div class="price-name">War Risk Premium</div>
+          <div class="price-val" id="p-risk" style="font-size:16px;color:var(--yellow)">~1.0%</div>
+          <div class="price-chg" style="color:var(--muted)">of hull value · S&amp;P Global</div>
+        </div>
+      </div>
+      <div id="price-notice" class="cfg-notice" style="display:none">
+        Add ALPHA_VANTAGE_KEY to CONFIG for live prices. Showing indicative values.
+      </div>
+    </div>
+
+    <!-- SATELLITE -->
+    <div class="pane">
+      <div class="pane-title">Satellite Intelligence <small>Copernicus Data Space</small></div>
+      <div class="sat-grid">
+        <div class="sat-card">
+          <div class="sat-type">Sentinel-2 · Optical</div>
+          <div class="sat-date" id="s2-date">…</div>
+          <div class="sat-detail" id="s2-detail">10m resolution · true colour</div>
+          <a class="sat-link"
+             href="https://browser.dataspace.copernicus.eu/?zoom=9&lat=26.5&lng=56.5&themeId=DEFAULT-THEME&datasetId=S2_L2A_CDAS"
+             target="_blank" rel="noopener">View in Copernicus Browser →</a>
+        </div>
+        <div class="sat-card">
+          <div class="sat-type">Sentinel-1 · SAR Radar</div>
+          <div class="sat-date" id="s1-date">…</div>
+          <div class="sat-detail" id="s1-detail">IW GRD 10m · all-weather</div>
+          <a class="sat-link"
+             href="https://browser.dataspace.copernicus.eu/?zoom=9&lat=26.5&lng=56.5&themeId=DEFAULT-THEME&datasetId=S1_SAR_GRD"
+             target="_blank" rel="noopener">View in Copernicus Browser →</a>
+        </div>
+      </div>
+      <div class="dark-alert">
+        <div class="dark-alert-icon">⚠️</div>
+        <div>
+          <div class="dark-alert-title">Dark Vessel Detection</div>
+          <div class="dark-alert-body" id="dark-text">
+            SAR radar detects ships regardless of AIS transponder status.
+            Cross-referencing latest SAR pass with AIS positions reveals vessels
+            broadcasting no signal. Requires onboard SAR processing pipeline.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAP CONTROLS -->
+    <div class="pane">
+      <div class="pane-title">Map Layers</div>
+      <label class="layer-row">
+        <input type="checkbox" id="l-modis" onchange="toggleModis(this.checked)">
+        NASA MODIS daily imagery (250m · updated daily)
+      </label>
+      <label class="layer-row">
+        <input type="checkbox" id="l-ships" checked onchange="toggleShips(this.checked)">
+        Live AIS vessel positions
+      </label>
+      <label class="layer-row">
+        <input type="checkbox" id="l-fence" checked onchange="toggleFence(this.checked)">
+        Strait crossing reference line
+      </label>
+      <div class="legend-row">
+        <div class="leg"><div class="dot" style="background:#ff6b6b"></div>Tanker</div>
+        <div class="leg"><div class="dot" style="background:#58a6ff"></div>Container</div>
+        <div class="leg"><div class="dot" style="background:#ffd700"></div>Dry Bulk</div>
+        <div class="leg"><div class="dot" style="background:#50fa7b"></div>Cargo</div>
+        <div class="leg"><div class="dot" style="background:#bd93f9"></div>Passenger</div>
+        <div class="leg"><div class="dot" style="background:#9e9e9e"></div>Other</div>
+      </div>
+    </div>
+
+  </div><!-- /right-panel -->
+</div><!-- /main -->
+
+<!-- ═══════════════════════════════════════════════════════ BOTTOM -->
+<div class="bottom">
+
+  <!-- CHART -->
+  <div class="chart-pane">
+    <div class="pane-title" style="margin-bottom:6px;">
+      90-Day Transit Trend
+      <small>IMF PortWatch daily · crisis onset marked</small>
+    </div>
+    <div style="position:relative;flex:1;">
+      <canvas id="trend-chart"></canvas>
+    </div>
+  </div>
+
+  <!-- NEWS -->
+  <div class="news-pane">
+    <div class="news-header">
+      <div class="pane-title" style="margin-bottom:0">News Feed</div>
+      <div style="font-size:9px;color:var(--muted);" id="news-ts">—</div>
+    </div>
+    <div class="news-tabs">
+      <div class="ntab active" data-tab="all">All</div>
+      <div class="ntab" data-tab="maritime">Maritime</div>
+      <div class="ntab" data-tab="regional">Regional</div>
+      <div class="ntab" data-tab="official">Official</div>
+    </div>
+    <div class="news-list" id="news-list">
+      <div class="nplaceholder">Loading news feeds…</div>
+    </div>
+  </div>
+
+</div><!-- /bottom -->
+
+<!-- ═══════════════════════════════════════════════════════ SCRIPT -->
+<script>
+// ──────────────────────────────────────────────────────────────────
+// CONFIG  — loaded from localStorage; edit via ⚙ API Keys button
+// ──────────────────────────────────────────────────────────────────
+const CONFIG = {
+  AISSTREAM_KEY:     localStorage.getItem('hz_ais_key')  || '',
+  ALPHA_VANTAGE_KEY: localStorage.getItem('hz_av_key')   || '',
+};
+
+// ── SETTINGS MODAL ───────────────────────────────────────────────
+function openSettings() {
+  document.getElementById('inp-ais').value = CONFIG.AISSTREAM_KEY;
+  document.getElementById('inp-av').value  = CONFIG.ALPHA_VANTAGE_KEY;
+  updateBadges();
+  document.getElementById('modal-backdrop').classList.add('open');
+}
+
+function closeSettings() {
+  document.getElementById('modal-backdrop').classList.remove('open');
+}
+
+function closeSettingsOnBackdrop(e) {
+  if (e.target === document.getElementById('modal-backdrop')) closeSettings();
+}
+
+function updateBadges() {
+  setBadge('badge-ais', !!CONFIG.AISSTREAM_KEY);
+  setBadge('badge-av',  !!CONFIG.ALPHA_VANTAGE_KEY);
+}
+
+function setBadge(id, isSet) {
+  const el = document.getElementById(id);
+  el.textContent = isSet ? 'set ✓' : 'not set';
+  el.className   = `key-status ${isSet ? 'key-set' : 'key-unset'}`;
+}
+
+function saveSettings() {
+  const ais = document.getElementById('inp-ais').value.trim();
+  const av  = document.getElementById('inp-av').value.trim();
+
+  CONFIG.AISSTREAM_KEY     = ais;
+  CONFIG.ALPHA_VANTAGE_KEY = av;
+
+  if (ais) localStorage.setItem('hz_ais_key', ais);
+  else     localStorage.removeItem('hz_ais_key');
+
+  if (av)  localStorage.setItem('hz_av_key', av);
+  else     localStorage.removeItem('hz_av_key');
+
+  updateBadges();
+  closeSettings();
+
+  // Re-apply live feeds with new keys
+  if (ais) {
+    // Reconnect AIS WebSocket with new key
+    if (ST.ws) { ST.ws.close(); ST.ws = null; }
+    ST.shipLayer.clearLayers();
+    ST.ships.clear();
+    document.getElementById('ship-count').textContent = '0';
+    connectAIS();
+  }
+
+  if (av) {
+    document.getElementById('price-notice').style.display = 'none';
+    loadPrices();
+  }
+
+  // Update demo banner
+  const hasKeys = CONFIG.AISSTREAM_KEY || CONFIG.ALPHA_VANTAGE_KEY;
+  document.getElementById('demo-banner').style.display = hasKeys ? 'none' : 'block';
+}
+
+// ──────────────────────────────────────────────────────────────────
+// CONSTANTS
+// ──────────────────────────────────────────────────────────────────
+const HORMUZ  = [26.5, 56.5];
+const ZOOM    = 8;
+// Crisis onset date (traffic collapsed from ~95 to <20 vessels/day)
+const CRISIS  = '2026-01-29';
+const PRE_CRISIS_AVG = 95;
+
+// Geofence crossing line (26.4°N from western to eastern side of strait)
+const FENCE = [[26.4, 56.15], [26.4, 56.9]];
+
+const ARC_URL  = 'https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/Daily_Chokepoints_Data/FeatureServer/0/query';
+const COP_URL  = 'https://catalogue.dataspace.copernicus.eu/odata/v1/Products';
+const GDELT    = 'https://api.gdeltproject.org/api/v2/doc/doc';
+const RSS2JSON = 'https://api.rss2json.com/v1/api.json';
+
+const VESSEL_COLORS = {
+  tanker:    '#ff6b6b',
+  container: '#58a6ff',
+  drybulk:   '#ffd700',
+  cargo:     '#50fa7b',
+  passenger: '#bd93f9',
+  other:     '#9e9e9e',
+};
+
+const RSS_FEEDS = [
+  { url: 'https://splash247.com/feed/',                               label: 'Splash247',  tab: 'maritime' },
+  { url: 'https://feeds.feedburner.com/gcaptain',                     label: 'gCaptain',   tab: 'maritime' },
+  { url: 'https://www.aljazeera.com/xml/rss/all.xml',                 label: 'Al Jazeera', tab: 'regional' },
+  { url: 'https://www.xinhuanet.com/english/rss/worldrss.xml',        label: 'Xinhua',     tab: 'regional' },
+  { url: 'https://combinedmaritimeforces.com/feed/',                  label: 'CMF',        tab: 'official' },
+];
+
+const KEYWORDS = ['hormuz','iran','persian gulf','tanker','strait','oil ship','sanction','naval','vessel attack','maritime security'];
+
+// ──────────────────────────────────────────────────────────────────
+// STATE
+// ──────────────────────────────────────────────────────────────────
+const ST = {
+  map: null, shipLayer: null, fenceLayer: null, modisLayer: null,
+  ws: null,
+  ships: new Map(),   // mmsi → { marker, name, type, sog, dest }
+  chart: null,
+  articles: { all:[], maritime:[], regional:[], official:[] },
+  activeTab: 'all',
+};
+
+// ──────────────────────────────────────────────────────────────────
+// MAP
+// ──────────────────────────────────────────────────────────────────
+function initMap() {
+  ST.map = L.map('map', { center: HORMUZ, zoom: ZOOM, zoomControl: true });
+
+  // Esri World Imagery (satellite basemap, no token required)
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Esri · Maxar · Earthstar Geographics',
+    maxZoom: 19,
+  }).addTo(ST.map);
+
+  // Ship layer
+  ST.shipLayer = L.layerGroup().addTo(ST.map);
+
+  // Strait crossing line
+  ST.fenceLayer = L.polyline(FENCE, {
+    color: '#ff4444', weight: 2, dashArray: '6 3', opacity: 0.85,
+  }).addTo(ST.map);
+
+  // Label for the crossing line
+  const mid = [(FENCE[0][0] + FENCE[1][0]) / 2, (FENCE[0][1] + FENCE[1][1]) / 2];
+  L.marker(mid, {
+    icon: L.divIcon({
+      className: '',
+      html: '<div style="background:rgba(255,68,68,.8);color:#fff;font-size:9px;padding:2px 6px;border-radius:3px;white-space:nowrap;pointer-events:none">Crossing reference</div>',
+      iconAnchor: [52, 8],
+    }),
+    interactive: false,
+  }).addTo(ST.map);
+
+  // NASA GIBS MODIS layer (daily, 250m) — off by default
+  const today = new Date().toISOString().slice(0, 10);
+  ST.modisLayer = L.tileLayer(
+    `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/${today}/GoogleMapsCompatible/{z}/{y}/{x}.jpg`,
+    { attribution: 'NASA GIBS · MODIS Terra', maxZoom: 9, opacity: 0.75 }
+  );
+}
+
+function toggleModis(on)  { on ? ST.modisLayer.addTo(ST.map) : ST.modisLayer.remove(); }
+function toggleShips(on)  { on ? ST.shipLayer.addTo(ST.map)  : ST.shipLayer.remove();  }
+function toggleFence(on)  { on ? ST.fenceLayer.addTo(ST.map) : ST.fenceLayer.remove(); }
+
+// ──────────────────────────────────────────────────────────────────
+// AIS SHIP TRACKING
+// ──────────────────────────────────────────────────────────────────
+function vesselColor(typeCode) {
+  if (!typeCode) return VESSEL_COLORS.other;
+  const t = +typeCode;
+  if (t >= 80 && t <= 89) return VESSEL_COLORS.tanker;
+  if (t >= 70 && t <= 79) return VESSEL_COLORS.cargo;
+  if (t === 70)            return VESSEL_COLORS.container;
+  if (t >= 60 && t <= 69) return VESSEL_COLORS.passenger;
+  if (t >= 30 && t <= 39) return VESSEL_COLORS.other; // fishing
+  return VESSEL_COLORS.other;
+}
+
+function vesselTypeName(typeCode) {
+  if (!typeCode) return 'Unknown';
+  const t = +typeCode;
+  if (t >= 80 && t <= 89) return 'Tanker';
+  if (t >= 70 && t <= 79) return 'Cargo';
+  if (t >= 60 && t <= 69) return 'Passenger';
+  if (t >= 30 && t <= 39) return 'Fishing';
+  return 'Other';
+}
+
+function connectAIS() {
+  if (!CONFIG.AISSTREAM_KEY) {
+    addDemoShips();
+    return;
+  }
+
+  function connect() {
+    ST.ws = new WebSocket('wss://stream.aisstream.io/v0/stream');
+
+    ST.ws.onopen = () => {
+      ST.ws.send(JSON.stringify({
+        APIKey: CONFIG.AISSTREAM_KEY,
+        BoundingBoxes: [[[24.5, 55.0], [28.5, 58.5]]],
+        FilterMessageTypes: ['PositionReport', 'ShipStaticData'],
+      }));
+    };
+
+    ST.ws.onmessage = e => {
+      try { onAISMsg(JSON.parse(e.data)); } catch (_) {}
+    };
+
+    ST.ws.onclose = () => setTimeout(connect, 10000);
+    ST.ws.onerror = err => console.error('AIS WebSocket:', err);
+  }
+
+  connect();
+}
+
+function onAISMsg(msg) {
+  const mmsi = String(msg.MetaData?.MMSI || '');
+  if (!mmsi) return;
+
+  const meta = msg.MetaData;
+
+  if (msg.MessageType === 'PositionReport') {
+    const lat = meta?.latitude, lng = meta?.longitude;
+    if (!lat || !lng) return;
+    const sog = msg.Message?.PositionReport?.Sog ?? 0;
+
+    if (ST.ships.has(mmsi)) {
+      const s = ST.ships.get(mmsi);
+      s.marker.setLatLng([lat, lng]);
+      s.sog = sog;
+    } else {
+      const existing = ST.ships.get(mmsi) || {};
+      const color = vesselColor(existing.typeCode);
+      const marker = L.circleMarker([lat, lng], {
+        radius: 4, fillColor: color, color: color,
+        weight: 1, opacity: 0.9, fillOpacity: 0.85,
+      }).addTo(ST.shipLayer);
+
+      marker.bindPopup(() => {
+        const s = ST.ships.get(mmsi) || {};
+        return `<b>${s.name || 'Unknown'}</b><br>
+          MMSI: ${mmsi}<br>
+          Type: ${vesselTypeName(s.typeCode)}<br>
+          Speed: ${(s.sog || 0).toFixed(1)} kn<br>
+          Destination: ${s.dest || '—'}`;
+      });
+
+      ST.ships.set(mmsi, { marker, lat, lng, sog, ...existing });
+    }
+    document.getElementById('ship-count').textContent = ST.ships.size;
+
+  } else if (msg.MessageType === 'ShipStaticData') {
+    const info = msg.Message?.ShipStaticData || {};
+    const entry = ST.ships.get(mmsi) || {};
+    entry.name     = (info.Name     || '').trim() || entry.name;
+    entry.typeCode = info.Type      || entry.typeCode;
+    entry.dest     = (info.Destination || '').trim() || entry.dest;
+
+    if (entry.marker && info.Type) {
+      const c = vesselColor(info.Type);
+      entry.marker.setStyle({ fillColor: c, color: c });
+    }
+    ST.ships.set(mmsi, entry);
+  }
+}
+
+// Demo ships to populate map when no AIS key is provided
+function addDemoShips() {
+  const demos = [
+    { mmsi: 'd1', lat: 26.65, lng: 56.20, name: 'MT HORIZON SPIRIT',  typeCode: 82 },
+    { mmsi: 'd2', lat: 26.45, lng: 56.50, name: 'BW LOTUS',           typeCode: 81 },
+    { mmsi: 'd3', lat: 26.30, lng: 56.75, name: 'HAFNIA TAURUS',      typeCode: 80 },
+    { mmsi: 'd4', lat: 26.58, lng: 56.40, name: 'MAERSK HORMUZ',      typeCode: 71 },
+    { mmsi: 'd5', lat: 26.42, lng: 56.62, name: 'BULK CARRIER NOVA',  typeCode: 74 },
+  ];
+  demos.forEach(d => {
+    const color = vesselColor(d.typeCode);
+    const marker = L.circleMarker([d.lat, d.lng], {
+      radius: 4, fillColor: color, color: color,
+      weight: 1, opacity: 0.7, fillOpacity: 0.65,
+    }).addTo(ST.shipLayer);
+    marker.bindPopup(`<b>${d.name}</b><br>Type: ${vesselTypeName(d.typeCode)}<br><i style="color:#8b949e">Demo — add AISStream key for live data</i>`);
+    ST.ships.set(d.mmsi, { marker, ...d });
+  });
+  document.getElementById('ship-count').textContent = `${demos.length} (demo)`;
+}
+
+// ──────────────────────────────────────────────────────────────────
+// PORTWATCH TRANSIT DATA
+// ──────────────────────────────────────────────────────────────────
+async function loadPortWatch() {
+  const from = new Date();
+  from.setDate(from.getDate() - 95);
+  const fromStr = from.toISOString().slice(0, 10);
+
+  const p = new URLSearchParams({
+    where: `portid='chokepoint6' AND date >= '${fromStr}'`,
+    outFields: 'date,n_total,n_tanker,n_container,n_dry_bulk,n_general_cargo,n_roro,capacity',
+    orderByFields: 'date ASC',
+    resultRecordCount: 100,
+    f: 'json',
+  });
+
+  try {
+    const res  = await fetch(`${ARC_URL}?${p}`);
+    const json = await res.json();
+    const recs = json.features
+      .map(f => ({
+        date:      new Date(f.attributes.date),
+        total:     f.attributes.n_total,
+        tanker:    f.attributes.n_tanker,
+        container: f.attributes.n_container,
+        drybulk:   f.attributes.n_dry_bulk,
+        cargo:     f.attributes.n_general_cargo,
+        roro:      f.attributes.n_roro,
+        capacity:  f.attributes.capacity,
+      }))
+      .filter(r => r.total != null);
+
+    if (recs.length) {
+      updateStats(recs);
+      renderChart(recs);
+    }
+  } catch (e) {
+    console.error('PortWatch:', e);
+    document.getElementById('s-date').textContent = 'Load error';
+  }
+}
+
+function updateStats(recs) {
+  const latest = recs[recs.length - 1];
+  const ds = latest.date.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+
+  document.getElementById('s-total').textContent  = latest.total  ?? '—';
+  document.getElementById('s-date').textContent   = ds;
+  document.getElementById('s-tanker').textContent = latest.tanker ?? '—';
+  document.getElementById('s-cap').textContent    = latest.capacity
+    ? `${Math.round(latest.capacity / 1000).toLocaleString()}K t`
+    : '—';
+
+  const pct = Math.round(((latest.total - PRE_CRISIS_AVG) / PRE_CRISIS_AVG) * 100);
+  const el  = document.getElementById('s-chg');
+  el.textContent = (pct >= 0 ? '+' : '') + pct + '%';
+  el.style.color = pct >= 0 ? 'var(--green)' : 'var(--red)';
+
+  const types = [
+    { lbl: 'Tanker',    val: latest.tanker,    c: VESSEL_COLORS.tanker    },
+    { lbl: 'Container', val: latest.container, c: VESSEL_COLORS.container },
+    { lbl: 'Dry Bulk',  val: latest.drybulk,   c: VESSEL_COLORS.drybulk  },
+    { lbl: 'Cargo',     val: latest.cargo,      c: VESSEL_COLORS.cargo    },
+    { lbl: 'RoRo',      val: latest.roro,       c: VESSEL_COLORS.other    },
+  ].filter(t => t.val);
+
+  document.getElementById('vessel-tags').innerHTML = types.map(t =>
+    `<div class="vtag" style="background:${t.c}18;color:${t.c};border:1px solid ${t.c}35;">
+      <div class="dot" style="background:${t.c}"></div>${t.lbl}: ${t.val}
+    </div>`
+  ).join('');
+}
+
+// ──────────────────────────────────────────────────────────────────
+// CHART
+// ──────────────────────────────────────────────────────────────────
+function renderChart(recs) {
+  const labels  = recs.map(r => r.date.toLocaleDateString('en-US', { month:'short', day:'numeric' }));
+  const totals  = recs.map(r => r.total);
+  const tankers = recs.map(r => r.tanker);
+
+  const crisisIdx = recs.findIndex(r => r.date >= new Date(CRISIS));
+  const baseline  = recs.map((_, i) => i < crisisIdx ? PRE_CRISIS_AVG : null);
+
+  const crisisPlugin = {
+    id: 'crisisLine',
+    afterDraw(chart) {
+      if (crisisIdx < 0) return;
+      const ctx2 = chart.ctx;
+      const x = chart.scales.x.getPixelForIndex(crisisIdx);
+      const top = chart.chartArea.top, bot = chart.chartArea.bottom;
+      ctx2.save();
+      ctx2.strokeStyle = 'rgba(255,68,68,.65)';
+      ctx2.lineWidth   = 1.5;
+      ctx2.setLineDash([5, 3]);
+      ctx2.beginPath(); ctx2.moveTo(x, top); ctx2.lineTo(x, bot); ctx2.stroke();
+      ctx2.setLineDash([]);
+      ctx2.fillStyle = 'rgba(255,68,68,.85)';
+      ctx2.font = '9px -apple-system,sans-serif';
+      ctx2.fillText('Crisis onset', x + 4, top + 12);
+      ctx2.restore();
+    },
+  };
+
+  const ctx = document.getElementById('trend-chart').getContext('2d');
+  ST.chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Total Vessels',
+          data: totals,
+          borderColor: '#58a6ff',
+          backgroundColor: 'rgba(88,166,255,.07)',
+          borderWidth: 2, pointRadius: 0, tension: 0.35, fill: true,
+        },
+        {
+          label: 'Tankers',
+          data: tankers,
+          borderColor: '#ff6b6b',
+          backgroundColor: 'transparent',
+          borderWidth: 1.5, pointRadius: 0, tension: 0.35,
+        },
+        {
+          label: `Pre-crisis avg (~${PRE_CRISIS_AVG})`,
+          data: baseline,
+          borderColor: '#3fb950',
+          backgroundColor: 'transparent',
+          borderWidth: 1, borderDash: [5, 3], pointRadius: 0, spanGaps: false,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      plugins: {
+        legend: {
+          labels: { color: '#8b949e', boxWidth: 10, font: { size: 10 } },
+        },
+        tooltip: {
+          mode: 'index', intersect: false,
+          backgroundColor: 'rgba(13,17,23,.92)',
+          borderColor: '#30363d', borderWidth: 1,
+          titleColor: '#c9d1d9', bodyColor: '#8b949e',
+          titleFont: { size: 11 }, bodyFont: { size: 10 },
+        },
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(48,54,61,.35)' },
+          ticks: { color: '#8b949e', font: { size: 9 }, maxTicksLimit: 10 },
+        },
+        y: {
+          grid: { color: 'rgba(48,54,61,.35)' },
+          ticks: { color: '#8b949e', font: { size: 9 } },
+          title: { display: true, text: 'vessels / day', color: '#8b949e', font: { size: 9 } },
+        },
+      },
+    },
+    plugins: [crisisPlugin],
+  });
+}
+
+// ──────────────────────────────────────────────────────────────────
+// OIL PRICES
+// ──────────────────────────────────────────────────────────────────
+async function loadPrices() {
+  if (!CONFIG.ALPHA_VANTAGE_KEY) {
+    document.getElementById('price-notice').style.display = 'block';
+    // Indicative values (not live)
+    setPrice('brent', 128.45, 2.31);
+    setPrice('wti',   124.80, 1.92);
+    setPrice('gas',     3.42, -0.51);
+    return;
+  }
+
+  try {
+    const [brent, wti, gas] = await Promise.all([
+      avFetch('BRENT'), avFetch('WTI'), avFetch('NATURAL_GAS'),
+    ]);
+    if (brent) setPrice('brent', brent.cur, brent.chg);
+    if (wti)   setPrice('wti',   wti.cur,   wti.chg);
+    if (gas)   setPrice('gas',   gas.cur,   gas.chg);
+  } catch (e) {
+    console.error('Prices:', e);
+  }
+}
+
+async function avFetch(fn) {
+  const r = await fetch(
+    `https://www.alphavantage.co/query?function=${fn}&interval=daily&apikey=${CONFIG.ALPHA_VANTAGE_KEY}`
+  );
+  const d = await r.json();
+  const series = d?.data;
+  if (!series || series.length < 2) return null;
+  const cur = parseFloat(series[0].value);
+  const prv = parseFloat(series[1].value);
+  return { cur, chg: ((cur - prv) / prv) * 100 };
+}
+
+function setPrice(id, price, pct) {
+  document.getElementById(`p-${id}`).textContent = `$${price.toFixed(2)}`;
+  const el = document.getElementById(`c-${id}`);
+  el.textContent = `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`;
+  el.className   = `price-chg ${pct >= 0 ? 'up' : 'dn'}`;
+}
+
+// ──────────────────────────────────────────────────────────────────
+// SATELLITE CATALOG (Copernicus OData — no auth for catalog search)
+// ──────────────────────────────────────────────────────────────────
+async function loadSatInfo() {
+  const from = new Date();
+  from.setDate(from.getDate() - 12);
+  const fromStr = from.toISOString();
+
+  async function latest(collection) {
+    const u = `${COP_URL}?$filter=Collection/Name eq '${collection}' and OData.CSC.Intersects(area=geography'SRID=4326;POINT(56.5 26.5)') and ContentDate/Start gt ${fromStr}&$orderby=ContentDate/Start desc&$top=1&$select=Name,ContentDate`;
+    const r = await fetch(u);
+    const d = await r.json();
+    return d.value?.[0];
+  }
+
+  try {
+    const [s2, s1] = await Promise.all([latest('SENTINEL-2'), latest('SENTINEL-1')]);
+
+    if (s2) {
+      const d = new Date(s2.ContentDate.Start);
+      document.getElementById('s2-date').textContent   = d.toLocaleDateString('en-US', { month:'short', day:'numeric' });
+      document.getElementById('s2-detail').textContent = `${hoursAgo(d)}h ago · 10m optical`;
+    } else {
+      document.getElementById('s2-date').textContent = 'No pass found';
+    }
+
+    if (s1) {
+      const d = new Date(s1.ContentDate.Start);
+      document.getElementById('s1-date').textContent   = d.toLocaleDateString('en-US', { month:'short', day:'numeric' });
+      document.getElementById('s1-detail').textContent = `${hoursAgo(d)}h ago · IW GRD 10m SAR`;
+      document.getElementById('dark-text').textContent =
+        `Latest SAR pass: ${d.toLocaleDateString('en-US', { month:'short', day:'numeric' })}. ` +
+        `Pass every 2–3 days. Cross-reference with AIS to identify vessels with transponders off.`;
+    } else {
+      document.getElementById('s1-date').textContent = 'No pass found';
+    }
+  } catch (e) {
+    console.error('Satellite catalog:', e);
+    document.getElementById('s2-date').textContent = 'Error';
+    document.getElementById('s1-date').textContent = 'Error';
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────
+// NEWS — GDELT + RSS feeds
+// ──────────────────────────────────────────────────────────────────
+async function loadGDELT() {
+  try {
+    const q   = encodeURIComponent('"strait of hormuz" OR "hormuz" OR "persian gulf shipping" OR "Iran oil" OR "tanker attack"');
+    const url = `${GDELT}?query=${q}&mode=ArtList&maxrecords=20&format=json&timespan=48h&sort=DateDesc`;
+    const r   = await fetch(url);
+    const d   = await r.json();
+    const arts = (d.articles || []).map(a => ({
+      title: a.title, url: a.url,
+      source: a.domain.replace(/^www\./, ''),
+      ts: parseGDELTDate(a.seendate),
+      tab: 'all',
+    }));
+    mergeArticles(arts);
+    document.getElementById('news-ts').textContent = `Refreshed ${fmt(new Date())}`;
+  } catch (e) {
+    console.error('GDELT:', e);
+  }
+}
+
+async function loadRSS() {
+  await Promise.all(RSS_FEEDS.map(async feed => {
+    try {
+      const url = `${RSS2JSON}?rss_url=${encodeURIComponent(feed.url)}&count=8`;
+      const r   = await fetch(url);
+      const d   = await r.json();
+      if (d.status !== 'ok') return;
+
+      const arts = d.items
+        .filter(it => isRelevant(it.title + ' ' + (it.description || '')))
+        .map(it => ({
+          title:  it.title,
+          url:    it.link,
+          source: feed.label,
+          ts:     new Date(it.pubDate).getTime(),
+          tab:    feed.tab,
+        }));
+      mergeArticles(arts);
+    } catch (e) {
+      console.error(`RSS ${feed.label}:`, e);
+    }
+  }));
+}
+
+function isRelevant(text) {
+  const t = (text || '').toLowerCase();
+  return KEYWORDS.some(k => t.includes(k));
+}
+
+function mergeArticles(arts) {
+  arts.forEach(a => {
+    // Dedup by URL across all tabs
+    const existing = ST.articles.all.find(x => x.url === a.url);
+    if (existing) return;
+
+    ST.articles.all.push(a);
+    if (a.tab && a.tab !== 'all' && ST.articles[a.tab]) {
+      ST.articles[a.tab].push(a);
+    }
+  });
+
+  // Sort each tab by time desc
+  Object.keys(ST.articles).forEach(k => {
+    ST.articles[k].sort((a, b) => b.ts - a.ts);
+  });
+
+  renderNews();
+}
+
+function renderNews() {
+  const list = document.getElementById('news-list');
+  const arts = ST.articles[ST.activeTab] || [];
+
+  if (!arts.length) {
+    list.innerHTML = '<div class="nplaceholder">No articles yet…</div>';
+    return;
+  }
+
+  list.innerHTML = arts.slice(0, 25).map(a => `
+    <div class="nitem" onclick="window.open(${JSON.stringify(a.url)},'_blank','noopener')">
+      <div class="nsrc">${a.source}</div>
+      <div class="ntitle">${escHtml(a.title)}</div>
+      <div class="ntime">${timeAgo(a.ts)}</div>
+    </div>
+  `).join('');
+}
+
+document.querySelectorAll('.ntab').forEach(el => {
+  el.addEventListener('click', () => {
+    document.querySelectorAll('.ntab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+    ST.activeTab = el.dataset.tab;
+    renderNews();
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// UTILS
+// ──────────────────────────────────────────────────────────────────
+function parseGDELTDate(s) {
+  // Format: "20260409T123045Z"
+  if (!s || s.length < 15) return 0;
+  return new Date(`${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}T${s.slice(9,11)}:${s.slice(11,13)}:00Z`).getTime();
+}
+
+function hoursAgo(d) {
+  return Math.round((Date.now() - d.getTime()) / 3_600_000);
+}
+
+function timeAgo(ts) {
+  if (!ts) return '';
+  const m = Math.round((Date.now() - ts) / 60_000);
+  if (m <  60)   return `${m}m ago`;
+  if (m < 1440)  return `${Math.round(m / 60)}h ago`;
+  return `${Math.round(m / 1440)}d ago`;
+}
+
+function fmt(d) {
+  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+}
+
+function escHtml(s) {
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function tick() {
+  document.getElementById('ts').textContent = `Updated ${fmt(new Date())}`;
+  setTimeout(tick, 60_000);
+}
+
+// ──────────────────────────────────────────────────────────────────
+// INIT
+// ──────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  // Reflect saved key state in modal badges
+  updateBadges();
+
+  // Show demo banner if no keys configured
+  const hasKeys = CONFIG.AISSTREAM_KEY || CONFIG.ALPHA_VANTAGE_KEY;
+  if (!hasKeys) document.getElementById('demo-banner').style.display = 'block';
+
+  initMap();
+  connectAIS();
+  loadPortWatch();
+  loadPrices();
+  loadSatInfo();
+  loadGDELT();
+  loadRSS();
+  tick();
+
+  // Refresh intervals
+  setInterval(loadGDELT,    15 * 60 * 1000);   // news: 15 min
+  setInterval(loadRSS,      30 * 60 * 1000);   // RSS:  30 min
+  setInterval(loadPrices,   15 * 60 * 1000);   // prices: 15 min
+  setInterval(loadSatInfo,  60 * 60 * 1000);   // satellite: 1 hr
+  setInterval(loadPortWatch, 6 * 60 * 60 * 1000); // transit data: 6 hr
+});
+</script>
+
+<!-- ═══════════════════════════════════════════════════════ FOOTER -->
+<footer>
+  <span>Exploratory Project by <b>Curious HY</b></span>
+  <span>·</span>
+  <span>Sources: IMF PortWatch · AISStream · Copernicus · GDELT · Alpha Vantage</span>
+  <span>·</span>
+  <span>Data carries inherent lag — not for operational navigation use</span>
+</footer>
+
+</body>
+</html>
