@@ -271,18 +271,22 @@
     /* PRICES */
     .price-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(2, 1fr);
       gap: 5px;
     }
     .price-card {
       background: var(--bg);
       border: 1px solid var(--border);
       border-radius: 6px;
-      padding: 8px 10px;
+      padding: 7px 9px;
+      min-width: 0;
     }
-    .price-name { font-size: 9px; color: var(--muted); margin-bottom: 3px; }
+    .price-name {
+      font-size: 9px; color: var(--muted); margin-bottom: 3px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
     .price-val {
-      font-size: 18px; font-weight: 700;
+      font-size: 15px; font-weight: 700;
       font-variant-numeric: tabular-nums;
     }
     .price-chg { font-size: 10px; margin-top: 2px; }
