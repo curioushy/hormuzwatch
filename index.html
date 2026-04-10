@@ -734,7 +734,7 @@
   <div class="chart-pane">
     <div class="pane-title" style="margin-bottom:6px;">
       90-Day Transit Trend
-      <small>IMF PortWatch daily · crisis onset marked</small>
+      <small>IMF PortWatch daily · stacked by vessel type · crisis onset marked</small>
     </div>
     <div style="position:relative;flex:1;">
       <canvas id="trend-chart"></canvas>
@@ -1260,12 +1260,8 @@ function updateStats(recs) {
 // CHART
 // ──────────────────────────────────────────────────────────────────
 function renderChart(recs) {
-  const labels  = recs.map(r => r.date.toLocaleDateString('en-US', { month:'short', day:'numeric' }));
-  const totals  = recs.map(r => r.total);
-  const tankers = recs.map(r => r.tanker);
-
+  const labels    = recs.map(r => r.date.toLocaleDateString('en-US', { month:'short', day:'numeric' }));
   const crisisIdx = recs.findIndex(r => r.date >= new Date(CRISIS));
-  const baseline  = recs.map((_, i) => i < crisisIdx ? PRE_CRISIS_AVG : null);
 
   const crisisPlugin = {
     id: 'crisisLine',
@@ -1287,32 +1283,57 @@ function renderChart(recs) {
     },
   };
 
+  const avgLinePlugin = {
+    id: 'avgLine',
+    afterDraw(chart) {
+      if (crisisIdx < 0) return;
+      const ctx2  = chart.ctx;
+      const xEnd  = chart.scales.x.getPixelForIndex(crisisIdx - 1);
+      const xStart = chart.scales.x.getPixelForIndex(0);
+      const y     = chart.scales.y.getPixelForValue(PRE_CRISIS_AVG);
+      ctx2.save();
+      ctx2.strokeStyle = '#3fb950';
+      ctx2.lineWidth   = 1;
+      ctx2.setLineDash([5, 3]);
+      ctx2.beginPath(); ctx2.moveTo(xStart, y); ctx2.lineTo(xEnd, y); ctx2.stroke();
+      ctx2.setLineDash([]);
+      ctx2.fillStyle = '#3fb950';
+      ctx2.font = '8px -apple-system,sans-serif';
+      ctx2.fillText(`avg ~${PRE_CRISIS_AVG}`, xStart + 2, y - 3);
+      ctx2.restore();
+    },
+  };
+
   const ctx = document.getElementById('trend-chart').getContext('2d');
+  if (ST.chart) ST.chart.destroy();
   ST.chart = new Chart(ctx, {
-    type: 'line',
+    type: 'bar',
     data: {
       labels,
       datasets: [
         {
-          label: 'Total Vessels',
-          data: totals,
-          borderColor: '#58a6ff',
-          backgroundColor: 'rgba(88,166,255,.07)',
-          borderWidth: 2, pointRadius: 0, tension: 0.35, fill: true,
+          label: 'Tanker',
+          data: recs.map(r => r.tanker ?? 0),
+          backgroundColor: VESSEL_COLORS.tanker,
+          stack: 'vessels',
         },
         {
-          label: 'Tankers',
-          data: tankers,
-          borderColor: '#ff6b6b',
-          backgroundColor: 'transparent',
-          borderWidth: 1.5, pointRadius: 0, tension: 0.35,
+          label: 'Container',
+          data: recs.map(r => r.container ?? 0),
+          backgroundColor: VESSEL_COLORS.container,
+          stack: 'vessels',
         },
         {
-          label: `Pre-crisis avg (~${PRE_CRISIS_AVG})`,
-          data: baseline,
-          borderColor: '#3fb950',
-          backgroundColor: 'transparent',
-          borderWidth: 1, borderDash: [5, 3], pointRadius: 0, spanGaps: false,
+          label: 'Dry Bulk',
+          data: recs.map(r => r.drybulk ?? 0),
+          backgroundColor: VESSEL_COLORS.drybulk,
+          stack: 'vessels',
+        },
+        {
+          label: 'Other/Cargo',
+          data: recs.map(r => (r.cargo ?? 0) + (r.roro ?? 0)),
+          backgroundColor: VESSEL_COLORS.cargo,
+          stack: 'vessels',
         },
       ],
     },
@@ -1330,21 +1351,29 @@ function renderChart(recs) {
           borderColor: '#30363d', borderWidth: 1,
           titleColor: '#c9d1d9', bodyColor: '#8b949e',
           titleFont: { size: 11 }, bodyFont: { size: 10 },
+          callbacks: {
+            footer(items) {
+              const total = items.reduce((s, i) => s + i.parsed.y, 0);
+              return `Total: ${total}`;
+            },
+          },
         },
       },
       scales: {
         x: {
+          stacked: true,
           grid: { color: 'rgba(48,54,61,.35)' },
-          ticks: { color: '#8b949e', font: { size: 9 }, maxTicksLimit: 10 },
+          ticks: { color: '#8b949e', font: { size: 9 }, maxTicksLimit: 12 },
         },
         y: {
+          stacked: true,
           grid: { color: 'rgba(48,54,61,.35)' },
           ticks: { color: '#8b949e', font: { size: 9 } },
           title: { display: true, text: 'vessels / day', color: '#8b949e', font: { size: 9 } },
         },
       },
     },
-    plugins: [crisisPlugin],
+    plugins: [crisisPlugin, avgLinePlugin],
   });
 }
 
